@@ -1,4 +1,5 @@
 from flask import Flask, jsonify
+from flask_cors import CORS
 from dotenv import load_dotenv
 import malaya
 from textblob import TextBlob
@@ -9,7 +10,7 @@ import os
 
 
 app = Flask(__name__)
-
+CORS(app)
 
 load_dotenv()
 # get/create a .env file
@@ -24,7 +25,7 @@ def test():
     return "test"
 
 
-@app.route('/scrape', methods=['POST'])
+@app.route('/scrape')
 def scrape():
     # handling OAuth
     auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
