@@ -1,7 +1,10 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 import malaya
+import nltk
+from nltk.corpus import stopwords
+import pyLDAvis
 from textblob import TextBlob
 import pandas as pd
 import tweepy
@@ -11,6 +14,7 @@ import os
 
 app = Flask(__name__)
 CORS(app)
+nltk.download('stopwords')
 
 load_dotenv()
 # get/create a .env file
@@ -22,7 +26,7 @@ access_token_secret = os.getenv("ACCESS_SECRET")
 
 @app.route('/')
 def test():
-    return "test"
+    return jsonify("Unifi Hack 201"), 200
 
 
 @app.route('/scrape')
@@ -78,10 +82,10 @@ def scrape():
             pd.DataFrame(tweet_to_csv).to_csv(csvFile, index=False)
             return jsonify(csvFile + " has been created."), 200
         else:
-            return jsonify("Empty tweet."), 200
+            return '', '204 EMPTY TWEET'
 
     except Exception as e:
-        return jsonify("Some error"), 400
+        return jsonify(str(e)), 400
 
 
 @app.route('/model', methods=['GET'])
@@ -142,10 +146,83 @@ def model_out():
         #     ngram=(1, 4), skip=3)
 
         output = english.merge(malay, how='outer')
-        return output.to_json(orient="records"), "Updated Successfully!"
+        return output.to_json(orient="records"), 200
     except FileNotFoundError:
-        return jsonify('File not found'), 400
+        return jsonify('File not found'), 404
+
+    except Exception as e:
+        return jsonify(str(e)), 400
+
+
+@app.route('/chart')
+def make_chart():
+    try:
+        # import dataset
+        df = pd.read_csv('tweet_concat.csv')
+        features = ['created_at', 'id', 'user', 'full_text']
+        data = df[features]
+        data.full_text = data.full_text.astype('str')
+        text = data.full_text
+        text_list = text.values.tolist()  # model requires list as input
+        mn_lang = malaya.language_detection.multinomial()
+        lang = mn_lang.predict_batch(text_list)
+
+        # add lang column
+        data['lang'] = lang
+        data.lang.value_counts()  # ISSUE: model interprets malay as other
+        english = data[data['lang'] == 'ENGLISH']
+        english_text = english[['full_text']]
+        # model requires list as input
+        english_text_list = english_text.full_text.values.tolist()
+
+        # other and indonesia mostly consist of malay based on observation
+        malay = data[data['lang'] != 'ENGLISH']
+        malay_text = malay[['full_text']]
+        # model requires list as input
+        malay_text_list = malay_text.full_text.values.tolist()
+        english_sentiment = []
+        for tweet in english_text_list:
+            blob = TextBlob(tweet)
+            analysis = blob.sentiment
+            if analysis[0] >= 0:
+                english_sentiment.append('positive')
+            elif analysis[0] < 0:
+                english_sentiment.append('negative')
+
+        # add sentiment column
+        english['sentiment'] = english_sentiment
+        english.sentiment.value_counts()
+        malay_sentiment_xgb = malaya.sentiment.xgb()
+        malay_sentiment = malay_sentiment_xgb.predict_batch(
+            malay_text_list)  # get_proba=True
+
+        # add sentiment column
+        malay['sentiment'] = malay_sentiment
+        malay.sentiment.value_counts()
+
+        # topic modeling for english
+        lda = malaya.topic_model.lda(english_text_list, 10,
+                                     stemming=False,
+                                     vectorizer='skip-gram',
+                                     ngram=(1, 4),
+                                     skip=3,
+                                     stop_words=stopwords.words('english'))
+        prepared_data = lda.visualize_topics(notebook_mode=False)
+        pyLDAvis.save_html(prepared_data, 'pylda.html')
+        return send_file('pylda.html', attachment_filename='pylda.html'), 201
+
+    except FileNotFoundError:
+        return jsonify('File not found'), 404
+
+    except Exception as e:
+        print(str(e))
+        return jsonify("CHART IS CURRENTLY UNAVAILABLE"), 400
+
+
+@app.route('/done', methods=['POST'])
+def is_done():
+    return "test"
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False)
