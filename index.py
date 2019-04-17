@@ -142,7 +142,7 @@ def model_out():
         #     ngram=(1, 4), skip=3)
 
         output = english.merge(malay, how='outer')
-        return output.to_json(orient="records"), 200
+        return output.to_json(orient="records"), "Updated Successfully!"
     except FileNotFoundError:
         return jsonify('File not found'), 400
 
