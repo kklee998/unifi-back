@@ -44,7 +44,7 @@ def scrape():
     query = 'unifi'
     query2 = '@unifi OR @unifihelp'
     geocode = '4.586542,104.076119,450km'
-    max_tweets = 20
+    max_tweets = 30
 
     # data cleaning
 
@@ -188,72 +188,6 @@ def model_out():
 
     except Exception as e:
         return jsonify(str(e)), 400
-
-
-@app.route('/chart')
-def make_chart():
-    try:
-        # import dataset
-        df = pd.read_csv('tweet_concat.csv')
-        features = ['created_at', 'id_str', 'user', 'full_text']
-        data = df[features]
-        data.full_text = data.full_text.astype('str')
-        data.id_str = data.id_str.astype('str')
-        text = data.full_text
-        text_list = text.values.tolist()  # model requires list as input
-        mn_lang = malaya.language_detection.multinomial()
-        lang = mn_lang.predict_batch(text_list)
-
-        # add lang column
-        data['lang'] = lang
-        data.lang.value_counts()  # ISSUE: model interprets malay as other
-        english = data[data['lang'] == 'ENGLISH']
-        english_text = english[['full_text']]
-        # model requires list as input
-        english_text_list = english_text.full_text.values.tolist()
-
-        # other and indonesia mostly consist of malay based on observation
-        malay = data[data['lang'] != 'ENGLISH']
-        malay_text = malay[['full_text']]
-        # model requires list as input
-        malay_text_list = malay_text.full_text.values.tolist()
-        english_sentiment = []
-        for tweet in english_text_list:
-            blob = TextBlob(tweet)
-            analysis = blob.sentiment
-            if analysis[0] >= 0:
-                english_sentiment.append('positive')
-            elif analysis[0] < 0:
-                english_sentiment.append('negative')
-
-        # add sentiment column
-        english['sentiment'] = english_sentiment
-        english.sentiment.value_counts()
-        malay_sentiment_xgb = malaya.sentiment.xgb()
-        malay_sentiment = malay_sentiment_xgb.predict_batch(
-            malay_text_list)  # get_proba=True
-
-        # add sentiment column
-        malay['sentiment'] = malay_sentiment
-        malay.sentiment.value_counts()
-
-        # topic modeling for english
-        lda = malaya.topic_model.lda(english_text_list, 10,
-                                     stemming=False,
-                                     vectorizer='skip-gram',
-                                     ngram=(1, 4),
-                                     skip=3,
-                                     stop_words=stopwords_eng)
-        prepared_data = lda.visualize_topics(notebook_mode=False)
-        pyLDAvis.save_html(prepared_data, 'pylda.html')
-        return send_file('pylda.html', attachment_filename='pylda.html'), 201
-
-    except FileNotFoundError:
-        return jsonify('File not found'), 404
-
-    except Exception as e:
-        print(str(e))
-        return jsonify("CHART IS CURRENTLY UNAVAILABLE"), 400
 
 
 @app.route('/malay_sentiment')
@@ -516,7 +450,7 @@ def reply():
         return jsonify("Error has occured : " + str(e)), 400
 
 
-@app.route('/dm', methods=['POST'])
+@app.route('/message', methods=['POST'])
 def dm():
     form_data = request.json
     try:
@@ -525,8 +459,20 @@ def dm():
 
         api = tweepy.API(auth)
 
-        api.send_direct_message(
-            user_id=form_data['id'], text=form_data['text'])
+        event = {
+            "event": {
+                "type": "message_create",
+                "message_create": {
+                    "target": {
+                        "recipient_id": form_data['id']
+                    },
+                    "message_data": {
+                        "text": form_data['text']
+                    }
+                }
+            }
+        }
+        api.send_direct_message_new(event)
 
         return jsonify("Message sent successfully"), 201
 
