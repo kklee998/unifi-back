@@ -44,13 +44,13 @@ def scrape():
     query = 'unifi'
     query2 = '@unifi OR @unifihelp'
     geocode = '4.586542,104.076119,450km'
-    max_tweets = 30
+    max_tweets = 50
 
     # data cleaning
 
     # unwanted authors
     uw_au = ['unifi', 'unifihelp', 'helpmeunifi']
-    cleaner_regex = "(@[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)"
+    cleaner_regex = "(@[A-Za-z0-9]+)|(\w+:\/\/\S+)"
 
     try:
         searched_tweets1 = [status._json for status in tweepy.Cursor(
@@ -374,12 +374,12 @@ def is_done():
 
         try:
 
-            tweetid = request.json['id_str']
+            tweetid = request.json['id']
             with open('isdone.csv', 'a') as f:
                 writer = csv.writer(f)
                 writer.writerow([tweetid])
 
-            return jsonify(request.json['id_str'] + " successfully added"), 200
+            return jsonify(request.json['id'] + " successfully added"), 200
         except Exception as e:
             return jsonify("Error has occured : " + str(e)), 400
 
@@ -406,12 +406,12 @@ def is_dismiss():
 
         try:
 
-            tweetid = request.json['id_str']
+            tweetid = request.json['id']
             with open('isdismiss.csv', 'a') as f:
                 writer = csv.writer(f)
                 writer.writerow([tweetid])
 
-            return jsonify(request.json['id_str'] + " successfully added"), 200
+            return jsonify(request.json['id'] + " successfully added"), 200
         except Exception as e:
             return jsonify("Error has occured : " + str(e)), 400
 
@@ -442,7 +442,9 @@ def reply():
         api = tweepy.API(auth)
 
         api.update_status(
-            status=form_data['text'], in_reply_to_status_id=form_data['id'])
+            status=form_data['text'],
+            in_reply_to_status_id=form_data['id'],
+            auto_populate_reply_metadata=True)
 
         return jsonify("Status updated successfully"), 201
 
